@@ -1,0 +1,782 @@
+---
+title: "Take 2"
+output: pdf_document
+date: "2025-07-24"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Research")
+
+library(tidyverse)
+library(ggplot2)
+library(readr)
+```
+
+```{r}
+## Load the data
+
+# all g scores
+all_gScores <- read_csv("epimex_g_10june2025.csv")
+
+# all cog tests
+all_cogTests <- read_csv("epimex_gorilla_10june2025.csv")
+
+# all phenotype data 
+all_phenotype <-read_csv("epimex_12feb2025_sciddx_corrected_LMS.csv")
+
+# probands and controls phenotype file
+probands <- read.table("epimex_probands.fam", header = FALSE, sep = "", stringsAsFactors = FALSE)
+colnames(probands) <- c("FamilyID", "studyid", "PaternalID", "MaternalID", "sex", "phenotype")
+probands$group <- "Proband"
+
+controls <- read.table("epimex_controls.fam", header = FALSE, sep = "", stringsAsFactors = FALSE)
+colnames(controls) <- c("FamilyID", "studyid", "PaternalID", "MaternalID", "sex", "phenotype")
+controls$group <- "Control"
+
+## Filter data
+
+# filter phenotype data down to ID and age
+all_ages <- all_phenotype[, c("studyid", "age_2")]
+all_ages <- all_ages %>%
+  rename(
+    age = age_2
+  )
+
+# filter proband and control data down to ID, sex, and phenotype
+probands <- probands[, c("studyid", "sex", "phenotype", "group")]
+controls <- controls[, c("studyid", "sex", "phenotype", "group")]
+
+# combine proband and control data
+combined_phenotype <- bind_rows(controls, probands)
+
+# combine data with age
+combined_phenotype <- combined_phenotype %>%
+  left_join(all_ages, by = "studyid")
+
+# filter g scores and cog data down to the probands and controls
+filtered_gScores <- all_gScores[all_gScores$studyid %in% combined_phenotype$studyid, ]
+filtered_cogTests <- all_cogTests[all_cogTests$studyid %in% combined_phenotype$studyid, ]
+```
+```{r}
+
+```
+
+
+
+
+
+### Clean cognitive tests data
+
+```{r}
+## Matrix Reasoning Test
+
+# calculate accuracy 
+filtered_cogTests$matrixreasoning_accuracy <- filtered_cogTests$matrixreasoning_correct / filtered_cogTests$matrixreasoning_trials
+
+# standardize accuracy score (z-score)
+filtered_cogTests$matrixreasoning_z <- scale(filtered_cogTests$matrixreasoning_accuracy)
+
+# check work and visualize distribution
+summary(filtered_cogTests$matrixreasoning_accuracy)
+summary(filtered_cogTests$matrixreasoning_z)
+
+hist(filtered_cogTests$matrixreasoning_z, main = "Matrix Reasoning Accuracy", xlab = "Z-Score")
+```
+
+```{r}
+## CVLT (Califronia Verbal Learning Test)
+# cvlt_correct - total number of correctly recalled words
+# cvlt_dprime - ability to distinguish targets from distractors 
+
+# standardize scores (z-score)
+filtered_cogTests$cvlt_correct_z <- scale(filtered_cogTests$cvlt_correct) 
+filtered_cogTests$cvlt_dprime_z <- scale(filtered_cogTests$cvlt_dprime)
+
+# check summaries and visualize distribution
+summary(filtered_cogTests$cvlt_correct)
+summary(filtered_cogTests$cvlt_dprime)
+
+hist(filtered_cogTests$cvlt_correct_z, main = "CVLT Correct", xlab = "Z-Score")
+hist(filtered_cogTests$cvlt_dprime_z, main = "CVLT d'", xlab = "Z-Score")
+
+filtered_cogTests$verbal_learning_z <- rowMeans(
+  filtered_cogTests[, c("cvlt_correct_z", "cvlt_dprime_z")],
+  na.rm = TRUE
+)
+hist(filtered_cogTests$verbal_learning_z, main = "Verbal Learning Composite", xlab = "Z-Score")
+
+```
+
+```{r}
+## Verbal Fluency
+# pmr - phonemic fluency
+# animal - semantic fluency
+
+# check summaries 
+summary(filtered_cogTests$verbalfluency_es_pmr)
+summary(filtered_cogTests$verbalfluency_es_animal)
+
+# standardize (z-score)
+filtered_cogTests$verbalfluency_es_pmr_z <- scale(filtered_cogTests$verbalfluency_es_pmr) 
+filtered_cogTests$verbalfluency_es_animal_z <- scale(filtered_cogTests$verbalfluency_es_animal) 
+
+# visualize 
+hist(filtered_cogTests$cvlt_correct_z, main = "Phonemic Verbal Fluency", xlab = "Z-Score")
+hist(filtered_cogTests$cvlt_correct_z, main = "Semantic Verbal Fluency", xlab = "Z-Score")
+
+# composite verbal fluency (takes avg per person across both columns)
+filtered_cogTests$verbalfluency_composite <- rowMeans(
+  filtered_cogTests[, c("verbalfluency_es_pmr_z", "verbalfluency_es_animal_z")],
+  na.rm = TRUE
+)
+hist(filtered_cogTests$verbalfluency_composite, main = "Verbal Fluency Composite", xlab = "Z-Score")
+
+
+```
+
+```{r}
+## Facial Memory 
+
+# check summaries 
+summary(filtered_cogTests$facialmemory_correct)
+
+# standardize (z-score)
+filtered_cogTests$facialmemory_z <- scale(filtered_cogTests$facialmemory_correct) 
+
+# visualize 
+hist(filtered_cogTests$facialmemory_z, main = "Facial Memory", xlab = "Z-Score")
+```
+
+```{r}
+## Verbal Working Memory
+# forward_mns - simple span
+# backward_mns - reversed span
+# lns_mns - letter number sequencing
+
+# summaries
+summary(filtered_cogTests$verbalworkingmemory_forward_mns)
+summary(filtered_cogTests$verbalworkingmemory_backward_mns)
+summary(filtered_cogTests$verbalworkingmemory_lns_mns)
+
+# scale
+filtered_cogTests$vwm_forward_z <- scale(filtered_cogTests$verbalworkingmemory_forward_mns)
+filtered_cogTests$vwm_backward_z <- scale(filtered_cogTests$verbalworkingmemory_backward_mns)
+filtered_cogTests$vwm_lns_z <- scale(filtered_cogTests$verbalworkingmemory_lns_mns)
+
+# composite scores
+filtered_cogTests$vwm_composite <- rowMeans(
+  filtered_cogTests[, c("vwm_forward_z", "vwm_backward_z", "vwm_lns_z")],
+  na.rm = TRUE
+)
+
+hist(filtered_cogTests$vwm_composite, main = "VWM Composite", xlab = "Z-Score")
+summary(filtered_cogTests$vwm_composite)
+
+
+```
+
+```{r}
+## Digit Symbols - processing speed
+
+# standardize 
+filtered_cogTests$digitsymbol1_score_z <- scale(filtered_cogTests$digitsymbol1_score)
+filtered_cogTests$digitsymbol2_score_z <- scale(filtered_cogTests$digitsymbol2_score)
+filtered_cogTests$digitsymbol_score_z <- scale(filtered_cogTests$digitsymbol_score)
+
+# composite score
+filtered_cogTests$digitsymbol_composite <- rowMeans(
+  filtered_cogTests[, c("digitsymbol1_score_z", "digitsymbol2_score_z", "digitsymbol_score_z")],
+  na.rm = TRUE
+)
+summary(filtered_cogTests$digitsymbol_composite)
+hist(filtered_cogTests$digitsymbol_composite, main = "Digit Symbol", xlab = "Z-Score")
+
+```
+
+```{r}
+# Combine all composite scores into new data table
+composite_cogTests <- filtered_cogTests %>%
+  select(studyid, digitsymbol_composite, facialmemory_z, verbalfluency_composite, verbal_learning_z, matrixreasoning_z, vwm_composite)
+view(composite_cogTests)
+# combine g scores with tests
+final_cogData <- composite_cogTests %>%
+  left_join(filtered_gScores, by = "studyid")
+view(final_cogData)
+
+final_cogData$studyid <- as.character(final_cogData$studyid)
+combined_phenotype$studyid <- as.character(combined_phenotype$studyid)
+
+
+# Combine cog and phenotype data
+pheno_cog <- final_cogData %>%
+  left_join(combined_phenotype, by = "studyid")
+view(pheno_cog)
+```
+
+# Correlation Testing Probands/Controls & Cog Data
+
+```{r}
+# Box plot comparing the Cognitive Scores for probands vs controls.
+
+ggplot(pheno_cog, aes(x=factor(group), y = g)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "G Score", title = "G Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = digitsymbol_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Digit Symbol Score", title = "Digit Symbol Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = facialmemory_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Facial Memory Score", title = "Facial Memory Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = verbalfluency_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Verbal Fluency Score", title = "Verbal Fluency Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = matrixreasoning_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Matrix Reasoning Score", title = "Matrix Reasoning Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = vwm_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Verbal Working Memory Score", title = "Verbal Working Memory Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(group), y = verbal_learning_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Group", y = "Verbal Learning Score", title = "Verbal Learning Score by Group") +
+  theme_minimal()
+
+ggplot(pheno_cog, aes(x=factor(sex), y = g)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Sex", y = "G Score", title = "G Score by Sex") +
+  theme_minimal()
+```
+
+## SNV and CNV data
+
+```{r}
+carriers <- read_csv("~/Downloads/cnv_snv_carriers(Sheet1).csv")
+carriers <- carriers %>%
+  mutate(
+    is_carrier = 1
+  )
+
+filtered_carriers <- carriers[carriers$studyid %in% combined_phenotype$studyid, ]
+
+filtered_carriers$studyid <- as.character(filtered_carriers$studyid)
+pheno_cog$studyid <- as.character(pheno_cog$studyid)
+
+n_occur <- data.frame(table(filtered_carriers$studyid))
+
+# add carrier status to pheno and cog data
+carriers_combined <- pheno_cog %>%
+  left_join(filtered_carriers, by = "studyid")
+
+carriers_combined$is_carrier[is.na(carriers_combined$is_carrier)] <- 0
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = g)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "G Score", title = "G Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = digitsymbol_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Digit Symbol Score", title = "Digit Symbol Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = facialmemory_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Facial Memory Score", title = "Facial Memory Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = verbalfluency_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Verbal Fluency Score", title = "Verbal Fluency Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = matrixreasoning_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Matrix Reasoning Score", title = "Matrix Reasoning Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = vwm_composite)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Verbal Working Memory Score", title = "Verbal Working Memory Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(is_carrier), y = verbal_learning_z)) +
+  geom_boxplot(fill = c("#999999", "#56B4E9")) +
+  labs(x = "Carrier Status", y = "Verbal Learning Score", title = "Verbal Learning Score by Carrier Status") +
+  theme_minimal()
+
+#ggplot(grouped_types, aes(x= is_carrier, y = g, fill = is_carrier)) +
+ # geom_violin(trim = FALSE) + 
+ # geom_boxplot(width = 0.1, outlier.shape = NA) +
+ # labs(title = "G Score by Carrier Status",
+  #     x = "Carrier Status",
+  #     y = "G Score") +
+ # theme_minimal() + 
+  #theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#table(grouped_types$gene_group)
+
+
+```
+
+
+
+
+
+```{r}
+table(filtered_carriers$variant_type)
+table(filtered_carriers$gene)
+```
+
+```{r}
+ggplot(carriers_combined, aes(x=factor(variant_type), y = g)) +
+  geom_boxplot( ) +
+  labs(x = "Carrier Status", y = "Matrix Reasoning Score", title = "Matrix Reasoning Score by Carrier Status") +
+  theme_minimal()
+
+ggplot(carriers_combined, aes(x=factor(gene), y = g)) +
+  geom_boxplot( ) +
+  labs(x = "Carrier Status", y = "Matrix Reasoning Score", title = "Matrix Reasoning Score by Carrier Status") +
+  theme_minimal()
+```
+```{r}
+## grouping duplications with LOF mutations
+grouped_types <- grouped_types %>%
+  mutate(
+    variant_group = case_when(
+      variant_type %in% c("missense") ~ "Missense",
+      variant_type %in% c("splice acceptor", "stop-gained", "frameshift", "DUP") ~ "LOF",
+      variant_type %in% c("DEL") ~ "Deletions"
+    )
+  )
+table(grouped_types$variant_group)
+
+carriers_cog <- grouped_types %>%
+  filter(is_carrier == "1")
+
+pairwise.t.test(
+  x = carriers_cog$g,
+  g = carriers_cog$variant_group,
+  p.adjust.method = "bonferroni"
+)
+```
+
+
+
+```{r}
+# Group variant type: DUP + LOF, DEL, Missense
+grouped_types <- carriers_combined %>%
+  mutate(
+    variant_group = case_when(
+      variant_type %in% c("stop-gained", "frameshift", "splice acceptor", "DUP") ~ "LOF",
+      variant_type %in% c("missense") ~ "Missense",
+      variant_type %in% c("DEL") ~ "DEL",
+      TRUE ~ "none"
+    )
+  )
+
+ggplot(grouped_types, aes(x=factor(variant_group), y = g)) +
+  geom_boxplot( ) +
+  labs(x = "Variant Group", y = "G Score", title = "G score by Variant group") +
+  theme_minimal()
+
+table(grouped_types$variant_group)
+
+# Group individual genes by biological function
+grouped_types <- carriers_combined %>%
+  mutate(
+    gene_group = case_when(
+      gene %in% c("CACNA1B", "CACNA1G", "CAGNA1G", "GRIN2A", "MAGI2", "NGLN2", "NLGN2", "SP4", "TRIO") ~ "Synaptic Signaling",
+      gene %in% c("CUL1", "HERC1", "PSMA3") ~ "Protien Regulation",
+      gene %in% c("CDK13", "NBEA", "STAG1", "AKAP11", "ATP9A") ~ "Cell Cycle",
+      gene %in% c("SETD1", "HDAC9", "JARID2", "TOP2B", "ZNF318") ~ "Chromatin",
+      TRUE ~ "Control"
+    )
+  )
+
+ggplot(grouped_types, aes(x=factor(gene_group), y = g)) +
+  geom_boxplot( ) +
+  labs(x = "Gene Group", y = "G Score", title = "G score by Gene group") +
+  theme_minimal()
+
+table(grouped_types$gene_group)
+
+```
+
+```{r}
+carriers_cog <- grouped_types %>%
+  filter(is_carrier == 1)
+
+view(carriers_cog)
+
+
+
+# pairwise t test
+pairwise.t.test(
+  x = carriers_cog$g,
+  g = carriers_cog$gene_group,
+  p.adjust.method = "bonferroni"
+)
+
+pairwise.t.test(
+  x = carriers_cog$digitsymbol_composite,
+  g = carriers_cog$gene_group,
+  p.adjust.method = "bonferroni"
+)
+```
+
+```{r}
+# Violin plot
+ggplot(grouped_types, aes(x= gene_group, y = g, fill = gene_group)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(title = "General Cognition Score by Gene Group",
+       x = "Gene Function Group",
+       y = "G Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(grouped_types, aes(x= gene_group, y = digitsymbol_composite, fill = gene_group)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(title = "Digit Symbol Score by Gene Function Group",
+       x = "Gene Function Group",
+       y = "Digit Symbol Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(grouped_types, aes(x= gene_group, y = verbal_learning_z, fill = gene_group)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(title = "Verbal Learning Score by Gene Function Group",
+       x = "Gene Function Group",
+       y = "Verbal Learning Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(grouped_types, aes(x= gene_group, y = vwm_composite, fill = gene_group)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(title = "VWM Score by Gene Function Group",
+       x = "Gene Function Group",
+       y = "VWM Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(grouped_types, aes(x= is_carrier, y = vwm_composite, fill = is_carrier)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = .1, outlier.shape = NA) +
+  labs(title = "VWM Score by Gene Function Group",
+       x = "Gene Function Group",
+       y = "VWM Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+```{r}
+model <- lm(digitsymbol_composite ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+model <- lm(facialmemory_z ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+model <- lm(verbalfluency_composite ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+model <- lm(verbal_learning_z ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+model <- lm(matrixreasoning_z ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+model <- lm(vwm_composite ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+
+model <- lm(g ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+
+
+```
+
+```{r}
+grouped_types$carrier_group <- with(grouped_types,
+  ifelse(group.x == "Control" & is_carrier == 0, "Control_NonCarrier",
+  ifelse(group.x == "Control" & is_carrier == 1, "Control_Carrier",
+  ifelse(group.x == "Proband" & is_carrier == 0, "Proband_NonCarrier",
+  "Proband_Carrier"))))
+
+table(grouped_types$carrier_group)
+
+ggplot(grouped_types, aes(x=factor(carrier_group), y = g)) +
+  geom_boxplot( ) +
+  labs(x = "Carrier Group", y = "G Score", title = "G score by Carrier group") +
+  theme_minimal()
+
+ggplot(grouped_types, aes(x= carrier_group, y = g, fill = carrier_group)) +
+  geom_violin(trim = FALSE) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  labs(title = "G Score by Carrier Group",
+       x = "Carrier Group",
+       y = "G Score") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+table(grouped_types$gene_group)
+```
+```{r}
+model <- lm(g ~ carrier_group + age + sex, data = grouped_types)
+summary(model)
+```
+
+
+
+```{r}
+model <- lm(g ~ group.x * is_carrier + age + sex, data = grouped_types)
+summary(model)
+
+model <- lm(g ~ group.x + age + sex + is_carrier, data = grouped_types)
+summary(model)
+
+model <- lm(g ~ group.x, data = grouped_types)
+summary(model)
+
+model <- lm(g ~ group.x + age + sex, data = grouped_types)
+summary(model)
+
+model <- lm(g ~ is_carrier + age + sex + group.x, data = grouped_types)
+summary(model)
+
+model <- lm(digitsymbol_composite ~ is_carrier + age + sex, data = grouped_types)
+summary(model)
+```
+
+## strong positive effect - older individuals score higher
+
+## carriers score \~0.14 points lower on g but this is not significant
+
+## Model is overall statistically significant - age adds menaingful predictive power
+
+## sex has no signfiicant effect on g
+
+```{r}
+model <- lm(g ~ gene_group + age + sex, data = grouped_types)
+summary(model)
+```
+
+```{r}
+# grouped bar chart for group by cog domains
+
+grouped_data_phenotype <- grouped_types %>%
+  group_by(phenotype) %>%
+  summarise(
+    Processing_Speed = mean(digitsymbol_composite, na.rm = TRUE),
+    Facial_Memory = mean(facialmemory_z, na.rm = TRUE),
+    Verbal_Learning = mean(verbal_learning_z, na.rm = TRUE),
+    Matrix_Reasoning = mean(matrixreasoning_z, na.rm = TRUE),
+    Verbal_Memory = mean(vwm_composite, na.rm = TRUE),
+    Verbal_Fluency = mean(verbalfluency_composite, na.rm = TRUE),
+    General_Cognition = mean(g, na.rm = TRUE),
+  ) 
+
+long_data_phenotype <- grouped_data_phenotype %>%
+  pivot_longer(cols = c(Processing_Speed, Facial_Memory, Verbal_Learning, Matrix_Reasoning, Verbal_Memory, Verbal_Fluency, General_Cognition),
+               names_to = "domain", values_to = "score")
+
+control_mean <- mean(long_data_phenotype$score[long_data_phenotype$phenotype == "1"])
+print(control_mean)
+
+ggplot(long_data_phenotype, aes(x = domain, y = score, fill = factor(phenotype))) + 
+         geom_bar(stat = "identity", position = "dodge") + 
+         labs(title = "Cognitive Performance by Phenotype", x = "Cognitive Domain", y = "Mean Z-Score", fill = "Phenotype") +
+         geom_hline(yintercept = non_carrier_mean, linetype = "dashed", color = "black") +
+         theme_minimal() +
+         theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#annotate("text", x=1, y = non_carrier_mean + 0.05, label = "Non-Carrier Mean, hjust = 0")
+```
+
+
+
+```{r}
+# grouped bar chart for carrier status by cog domains
+
+grouped_data <- grouped_types %>%
+  group_by(is_carrier) %>%
+  summarise(
+    Processing_Speed = mean(digitsymbol_composite, na.rm = TRUE),
+    Facial_Memory = mean(facialmemory_z, na.rm = TRUE),
+    Verbal_Learning = mean(verbal_learning_z, na.rm = TRUE),
+    Matrix_Reasoning = mean(matrixreasoning_z, na.rm = TRUE),
+    Verbal_Memory = mean(vwm_composite, na.rm = TRUE),
+    Verbal_Fluency = mean(verbalfluency_composite, na.rm = TRUE),
+    General_Cognition = mean(g, na.rm = TRUE),
+  ) 
+
+long_data <- grouped_data %>%
+  pivot_longer(cols = c(Processing_Speed, Facial_Memory, Verbal_Learning, Matrix_Reasoning, Verbal_Memory, Verbal_Fluency, General_Cognition),
+               names_to = "domain", values_to = "score") %>%
+  mutate(domain = gsub("_", " ", domain))
+
+non_carrier_mean <- mean(long_data$score[long_data$is_carrier == "0"])
+print(non_carrier_mean)
+
+ggplot(long_data, aes(x = domain, y = score, fill = factor(is_carrier))) + 
+         geom_bar(stat = "identity", position = "dodge") + 
+         labs(title = "Cognitive Performance by Carrier Status", x = "Cognitive Domain", y = "Mean Z-Score", fill = "Carrier Status") +
+         scale_fill_manual(values = c("0" = "salmon", "1" = "cyan3"),
+                           labels = c("Non-Carrier", "Carrier")) +
+         geom_hline(yintercept = non_carrier_mean, linetype = "dashed", color = "black") +
+         theme_minimal() +
+         theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#annotate("text", x=1, y = non_carrier_mean + 0.05, label = "Non-Carrier Mean, hjust = 0")
+```
+
+```{r}
+# # radar chart for cog domain and z score by carrier status 
+#  install.packages("fmsb")
+# library(fmsb)
+# 
+# radar_data <- grouped_data %>%
+#   select(-is_carrier)
+# 
+# rownames(radar_data) <- c("Non-Carrier", "Carrier")
+# view(radar_data)
+# 
+# radar_data <- rbind(
+#   rep(.2, ncol(radar_data)),
+#   rep(-.2, ncol(radar_data)),
+#   radar_data
+# )
+# 
+# radarchart(
+#   radar_data,
+#   axistype = 1,
+#   pcol = c("blue", "red"),
+#   pfcol = c(scales::alpha("blue", 0.3), scales::alpha("red", 0.3)),
+#   plwd = 2,
+#   cglcol = "grey",
+#   cglty = 1,
+#   axislabcol = "black",
+#   vlcex = 0.8
+# )
+# 
+# legend("topright", legend = rownames(radar_data)[3:4], fill = c("blue", "red"))
+```
+
+```{r}
+# heat map for cog domain and z score by gene group
+
+grouped_gene_data <- grouped_types %>%
+  group_by(gene_group) %>%
+  summarise(
+    Processing_Speed = mean(digitsymbol_composite, na.rm = TRUE),
+    Facial_Memory = mean(facialmemory_z, na.rm = TRUE),
+    Verbal_Learning = mean(verbal_learning_z, na.rm = TRUE),
+    Matrix_Reasoning = mean(matrixreasoning_z, na.rm = TRUE),
+    Verbal_Memory = mean(vwm_composite, na.rm = TRUE),
+    Verbal_Fluency = mean(verbalfluency_composite, na.rm = TRUE),
+    General_Cognition = mean(g, na.rm = TRUE),
+  ) 
+
+rownames(grouped_gene_data) <- grouped_gene_data$gene_group
+grouped_gene_data <- grouped_gene_data %>%
+  select(-gene_group)
+
+rownames(grouped_gene_data) <- c("Cell Cycle", "Chromatin", "Control", "Protein Regulation", "Synaptic Signal")
+
+```
+
+
+```{r}
+install.packages("pheatmap")
+library(pheatmap)
+
+pheatmap(
+  grouped_gene_data,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("blue", "lightblue", "white"))(50),
+  main = "Cognitive Performance by Gene Group",
+  legend = TRUE,
+  legend_labels = "Mean Z-Score"
+)
+```
+```{r}
+clean_colnames <- gsub("_", " ", colnames(grouped_gene_data))
+
+pheatmap::pheatmap(
+  grouped_gene_data,
+  cluster_rows = FALSE,
+  cluster_cols = FALSE,
+  color = colorRampPalette(c("lightblue", "white", "darkblue"))(100),
+  main = "Cognitive Performance by Gene Group",
+  fontsize = 12,
+  fontsize_col = 10, 
+  fontsize_row = 10,
+  angle_col = 45,
+  labels_col = clean_colnames,
+  labels_row = rownames(grouped_gene_data),
+  legend = TRUE,
+  legend_labels = "Mean Z-Score"
+)
+```
+```{r}
+grouped_gene_data2 <- grouped_types %>%
+  group_by(gene_group) %>%
+  summarise(
+    Processing_Speed = mean(digitsymbol_composite, na.rm = TRUE),
+    Facial_Memory = mean(facialmemory_z, na.rm = TRUE),
+    Verbal_Learning = mean(verbal_learning_z, na.rm = TRUE),
+    Matrix_Reasoning = mean(matrixreasoning_z, na.rm = TRUE),
+    Verbal_Memory = mean(vwm_composite, na.rm = TRUE),
+    Verbal_Fluency = mean(verbalfluency_composite, na.rm = TRUE),
+    General_Cognition = mean(g, na.rm = TRUE),
+  ) 
+
+long_heatmap_data <- grouped_gene_data2 %>%
+ pivot_longer(cols = -gene_group, names_to = "CognitiveDomain", values_to = "Z_Score") %>%
+ mutate(CognitiveDomain = gsub("_", " ", CognitiveDomain))
+
+
+ggplot(long_heatmap_data, aes(x = CognitiveDomain, y = gene_group, fill = Z_Score)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(low = "blue", mid = "lightblue", high = "white", midpoint = 0) +
+  labs(title = "Cognitive Performance by Gene Group",
+       x = "Cognitive Domain",
+       y = "Gene Group",
+       fill = "Mean Z-Score") +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "plain", size = 14),
+    axis.text.x = element_text(angle = 45, , hjust = 1),
+    axis.title.x = element_text(size = 12),
+    axis.title.y = element_text(size = 12),
+    legend.title = element_text(size = 12)
+  )
+```
+
+
+## description of the cohort - table of number with and without psychosis, sex, age range
+## no significance before correcting for multiple testing - considered, bonferroni test is overly conservative given the correlation among the variables
+## EPIMex*
+## 20 siblings, 2250 EOP, 1350 controls
+## names of genes, predefined genes
+## how many carriers of a schema gene mutation are controls vs probands
+
+```{r}
+hist(grouped_types$age, main = "Histogram of Age", xlab = "Age")
+summary(grouped_types$age)
+```
+
